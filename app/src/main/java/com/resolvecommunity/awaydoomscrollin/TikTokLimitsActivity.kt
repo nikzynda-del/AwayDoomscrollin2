@@ -97,3 +97,9 @@ class TikTokLimitsActivity : Activity() {
         root.addView(bar)
     }
 }
+
+internal var tikTokSwipeCount = 0
+internal var tikTokLastSwipeAt = 0L
+internal var tikTokLockedUntil = 0L
+internal val tikTokSwipeDebounceMs = 400L
+internal val tikTokCountResetMs = 15 * 60 * 1000L
