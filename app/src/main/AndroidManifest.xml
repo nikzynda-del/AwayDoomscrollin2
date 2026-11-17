@@ -54,5 +54,14 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+        <activity
+    android:name="com.resolvecommunity.awaydoomscrollin.TikTokLimitsActivity"
+    android:exported="true"
+    android:label="TikTok limits">
+    <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+    </intent-filter>
+</activity>
     </application>
 </manifest>
