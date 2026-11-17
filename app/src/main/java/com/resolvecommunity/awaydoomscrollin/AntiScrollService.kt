@@ -6336,8 +6336,7 @@ private const val YOUTUBE_BARS_RESTORE_INTERVAL_MS = 700L
             else -> Unit
         }
     }
-
-    /** Returns true when the event was a feed swipe (exited or still in cooldown). */
+ /** Returns true when the event was a feed swipe (exited or still in cooldown). */
     private fun handleTikTokScroll(event: AccessibilityEvent, direction: ScrollDirection): Boolean {
         val protectionEnabled = ProtectionPreferences.isEnabled(this, ProtectedApp.TIKTOK)
         if (!protectionEnabled) return false
@@ -6370,6 +6369,16 @@ private const val YOUTUBE_BARS_RESTORE_INTERVAL_MS = 700L
         }
 
         val now = System.currentTimeMillis()
+        if (now >= tikTokLockedUntil) {
+    if (now - tikTokLastSwipeAt > tikTokCountResetMs) tikTokSwipeCount = 0
+    if (now - tikTokLastSwipeAt >= tikTokSwipeDebounceMs) {
+        tikTokLastSwipeAt = now
+        tikTokSwipeCount++
+    }
+    if (tikTokSwipeCount <= TikTokLimits.freeSwipes(this)) return true
+    tikTokSwipeCount = 0
+    tikTokLockedUntil = now + TikTokLimits.lockoutMinutes(this) * 60_000L
+}
         if (!TikTokInterventionPolicy.cooldownElapsed(now, lastTikTokExitTime)) return true
 
         val accepted = performGlobalAction(GLOBAL_ACTION_BACK)
