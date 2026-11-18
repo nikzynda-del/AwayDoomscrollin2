@@ -6369,15 +6369,31 @@ private const val YOUTUBE_BARS_RESTORE_INTERVAL_MS = 700L
         }
 
         val now = System.currentTimeMillis()
-        if (now >= tikTokLockedUntil) {
-    if (now - tikTokLastSwipeAt > tikTokCountResetMs) tikTokSwipeCount = 0
+        val lockedUntil = TikTokLimits.lockedUntil(this)
+if (now >= lockedUntil) {
+    if (now - tikTokLastSwipeAt > tikTokCountResetMs) {
+        tikTokSwipeCount = 0
+        tikTokSessionStartAt = now
+    }
     if (now - tikTokLastSwipeAt >= tikTokSwipeDebounceMs) {
         tikTokLastSwipeAt = now
         tikTokSwipeCount++
     }
-    if (tikTokSwipeCount <= TikTokLimits.freeSwipes(this)) return true
+    val limitReached = if (TikTokLimits.limitByTime(this)) {
+        now - tikTokSessionStartAt > TikTokLimits.freeSeconds(this) * 1000L
+    } else {
+        tikTokSwipeCount > TikTokLimits.freeSwipes(this)
+    }
+    if (!limitReached) return true
     tikTokSwipeCount = 0
-    tikTokLockedUntil = now + TikTokLimits.lockoutMinutes(this) * 60_000L
+    tikTokLastSwipeAt = 0L
+    tikTokSessionStartAt = 0L
+    TikTokLimits.setLockedUntil(this, now + TikTokLimits.lockoutMs(this))
+    android.widget.Toast.makeText(this, "TikTok break started", android.widget.Toast.LENGTH_SHORT).show()
+} else if (now - tikTokLastToastAt >= 2000L) {
+    tikTokLastToastAt = now
+    val left = (lockedUntil - now) / 1000
+    android.widget.Toast.makeText(this, "TikTok break: ${left}s left", android.widget.Toast.LENGTH_SHORT).show()
 }
         if (!TikTokInterventionPolicy.cooldownElapsed(now, lastTikTokExitTime)) return true
 
@@ -6423,6 +6439,10 @@ private const val YOUTUBE_BARS_RESTORE_INTERVAL_MS = 700L
         lastTikTokTopTabCheckMs = now
 
         val layout = scanTikTokLayout(root)
+        if (System.currentTimeMillis() < TikTokLimits.lockedUntil(this) &&
+    layout.feedPagerVisible && layout.homeTabSelected &&
+    redirectTikTokToInbox(layout)
+) return
         val target = TikTokSurfacePolicy.snapBackTarget(
             layout.selectedTopTab, layout.topTabs.size, layout.homeTabSelected) ?: return
         var current: AccessibilityNodeInfo? = layout.topTabs[target]
@@ -6444,7 +6464,8 @@ private const val YOUTUBE_BARS_RESTORE_INTERVAL_MS = 700L
         val feedPagerVisible: Boolean,
         val homeTabSelected: Boolean,
         val topTabs: List<AccessibilityNodeInfo>,
-        val selectedTopTab: Int
+        val selectedTopTab: Int,
+        val bottomItems: List<AccessibilityNodeInfo> = emptyList()
     )
 
     /**
@@ -6460,6 +6481,7 @@ private const val YOUTUBE_BARS_RESTORE_INTERVAL_MS = 700L
         var feedPagerVisible = false
         var homeTabSelected = false
         var bottomBarSeen = false
+        var bottomItems: List<AccessibilityNodeInfo> = emptyList()
         var tabs: List<AccessibilityNodeInfo> = emptyList()
         var selected = -1
         val pending = ArrayDeque<AccessibilityNodeInfo>()
@@ -6479,6 +6501,7 @@ private const val YOUTUBE_BARS_RESTORE_INTERVAL_MS = 700L
                         items.count { it.isClickable }, screen.width(), screen.height())
                 ) {
                     bottomBarSeen = true
+                    bottomItems = items
                     homeTabSelected = items.firstOrNull()?.let(::isTikTokTabSelected) == true
                 }
             }
@@ -6513,7 +6536,7 @@ private const val YOUTUBE_BARS_RESTORE_INTERVAL_MS = 700L
             if (elapsed >= 24L) ProtectionFlightRecorder.record(this, "tiktok.layout",
                 "visited=$visited elapsedMs=$elapsed pager=$feedPagerVisible bar=$bottomBarSeen tabs=${tabs.size}")
         }
-        return TikTokLayout(feedPagerVisible, homeTabSelected, tabs, selected)
+        return TikTokLayout(feedPagerVisible, homeTabSelected, tabs, selected, bottomItems)
     }
 
     private fun isTikTokTabSelected(tab: AccessibilityNodeInfo): Boolean {
@@ -6523,6 +6546,22 @@ private const val YOUTUBE_BARS_RESTORE_INTERVAL_MS = 700L
         }
         return false
     }
+
+    private fun redirectTikTokToInbox(layout: TikTokLayout): Boolean {
+    val items = layout.bottomItems
+    if (items.size < 4) return false
+    var current: AccessibilityNodeInfo? = items[items.size - 2]
+    repeat(3) {
+        val candidate = current ?: return false
+        if (candidate.isClickable) {
+            val ok = candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (ok) Log.d(TAG, "TIKTOK_BREAK_INBOX_REDIRECT")
+            return ok
+        }
+        current = candidate.parent
+    }
+    return false
+}
 
     /**
      * Balanced leaves Subscriptions open, and in YouTube's 2026 layout it is a
